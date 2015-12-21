@@ -211,7 +211,7 @@ function (window) {
          * DropCell
         \**/
         HxCellGrid.prototype.dropCellAt = function( renderer, x, y ){
-            if(y){
+            if(typeof y !== 'undefined'){
                 var cell = this.getCell( x, y );
                 if(cell){
                     this.cells[x][y] = null;
@@ -274,28 +274,19 @@ function (window) {
                 this.draw(renderer);
             }
         };        
-
-        /**
-         * Renvoie la description du chemin permettant de générer un hexagone.
-         */
-        Cell.prototype.drawPath = function(){    
-            var side = _CS.getProperty('side');
-            var apothem = _CS.getProperty('apothem');
-            var point = this.origin.toBrowserXY();
-            var path =
-                "M" + (point.x + side) + "," + (point.y)
-                 + "l" + (- side / 2) + "," + (- apothem)
-                 + "l" + (- side) + "," + (0)
-                 + "l" + (- side / 2) + "," + (apothem)
-                 + "l" + (side / 2) + "," + (apothem)
-                 + "l" + (side) + "," + (0)
-                 + "Z";
-            return path;
-        };        
         
+        /**
+         * Effectue le tracé de la cellule.
+         *
+         ** [method]
+         *
+         * Par défaut, une cellule est représentée par un hexagone, centré sur son origine.
+         * L'objet "renderer" que l'on crée ici, est un objet Element de Raphael.JS ; il porte la
+         * structure du comportement graphique de la cellule.
+         */
         Cell.prototype.draw = function( renderer ){
-            var cell = this; // Définition d'une variable locale, qui sera valable pour le scope de tout les fonction internes ci-dessous.
-            var path = cell.drawPath();
+            var cell = this; // Définition d'une variable locale, qui sera valable pour le scope de toutes les fonction internes ci-dessous.
+            var path = utils.drawHexagon(cell.origin);
             var context = {cell:cell, renderer:renderer}
             var cellRenderer = renderer.path(path)
                 .attr('fill', cell.color)
@@ -307,19 +298,19 @@ function (window) {
                 
             context.cellRenderer = cellRenderer;
             
-            /* Comportement de sélection de la cellule. */
+            /* Définition du "click" sur une cellule, en s'appuyant sur son "state". */
             function clickCell() {
                 cell.state.clickCell(context);
             }
-            /* Comportement de sélection de la cellule. */
+            /* Définition du "double-click" sur une cellule, en s'appuyant sur son "state". */
             function dblClickCell() {
                 cell.state.dblClickCell(context);
             }
-            /* Comportement de sélection de la cellule. */
+            /* Définition du "hover-in" sur une cellule, en s'appuyant sur son "state". */
             function hoverInCell() {
                 cell.state.hoverInCell(context);
             }
-            /* Comportement de sélection de la cellule. */
+            /* Définition du "hover-out" sur une cellule, en s'appuyant sur son "state". */
             function hoverOutCell() {
                 cell.state.hoverOutCell(context);
             }     
@@ -349,6 +340,17 @@ function (window) {
          * CELL STATES
          *
         \****************************************/
+        /**
+         * Les Etats d'une cellule décrivent ses comportements dans les différents cas prévus.
+         *
+         ** [class]
+         *
+         * Les comportements prévus sont : "click", "double-click", "hover-in" et "hover-out"
+         * Par convention :
+         * > Click : déclenche un événement "state-less" ; qui ne changera pas l'état de la cellule
+         * > Double-Click : déclenche un événement "state-ful" ; qui changera  'état de la cellule
+         * > Hover-in et Hover-out : déclenchent des événements "state-less".
+        \**/
         function CellState( clickHandler, dblClickHandler, hoverInHandler, hoverOutHandler ) {
             this.clickHandler = clickHandler;
             this.dblClickHandler = dblClickHandler;
@@ -363,6 +365,21 @@ function (window) {
                 this.hoverOutHandler = CellState.defaults.hoverOutHandler;
             }
         }
+                
+        CellState.prototype.clickCell = function( context ){
+            this.clickHandler.call(this, context);
+        };
+        CellState.prototype.dblClickCell = function( context ){
+            this.dblClickHandler.call(this, context);
+        };
+        CellState.prototype.hoverInCell = function( context ){
+            this.hoverInHandler.call(this, context);
+        };
+        CellState.prototype.hoverOutCell = function( context ){
+            this.hoverOutHandler.call(this, context);
+        };
+        
+        // DEFAULTS
         
         CellState.defaults = {};
         CellState.defaults.clickHandler = function ( context ){
@@ -373,24 +390,10 @@ function (window) {
         };
         CellState.defaults.hoverInHandler = function ( context ){
             context.cellRenderer.attr('fill-opacity', '0.8');
+            // TODO : mettre en place un listener (menu ?) affichant la dernière cellule survolée
         };
         CellState.defaults.hoverOutHandler = function ( context ){
             context.cellRenderer.attr('fill-opacity', '0.05');
-        };
-        
-        CellState.prototype.clickCell = function( context ){
-            this.clickHandler.call(this, context);
-        };
-        
-        CellState.prototype.dblClickCell = function( context ){
-            this.dblClickHandler.call(this, context);
-        };
-        CellState.prototype.hoverInCell = function( context ){
-            this.hoverInHandler.call(this, context);
-        };
-        
-        CellState.prototype.hoverOutCell = function( context ){
-            this.hoverOutHandler.call(this, context);
         };
         
         // INSTANCES DES ETATS
@@ -482,7 +485,27 @@ function (window) {
                     }
                 }
                 return null;
-            } 
+            },
+            
+            /**
+             * Renvoie le tracé d'un hexagone, à partir de son centre, de la dimension de son côté, 
+             * et de son apothème.
+             */
+            drawHexagon: function( hexagonCenter ){    
+                var side = properties.side;
+                var apothem = properties.apothem;
+                var point = hexagonCenter.toBrowserXY();
+                var hexaDrawn =
+                       "M" + (point.x + side) + "," + (point.y)
+                     + "l" + (- side / 2) + "," + (- apothem)
+                     + "l" + (- side) + "," + (0)
+                     + "l" + (- side / 2) + "," + (apothem)
+                     + "l" + (side / 2) + "," + (apothem)
+                     + "l" + (side) + "," + (0)
+                     + "Z";
+                return hexaDrawn;
+            }
+            
         };
         
         // INIT

@@ -95,11 +95,11 @@ function (window) {
         
         
         
-        /*** *** *** *** ***\
-         * Hexa Cell Grid
-        [ method ]
-         **
-        \*** *** *** *** ***/
+        /****************************************\
+         * 
+         * HEXA CELL GRID
+         *
+        \****************************************/
         function HxCellGrid( properties ) {
             this.properties =  new Properties(properties);
             this.cells =[];
@@ -118,10 +118,6 @@ function (window) {
         
         HxCellGrid.prototype.getProperty = function( propertyName ) {
             return this.properties.get(propertyName);
-        };
-        
-        HxCellGrid.prototype.draw = function() {
-            return this.renderer;
         };
         
         /**\
@@ -227,12 +223,15 @@ function (window) {
             this.dropCellAt(renderer, point.x, point.y);
         };
             
-        /**
-         * Cell
-         **/
+        /****************************************\
+         *
+         * CELL
+         * 
+        \****************************************/
         function Cell( x , y ) {            
             this.origin = new Point(x, y);
             this.color = _CS.getProperty('defaultColor');
+            this.state = CellState.UNSELECTED;
         }
 
         /**
@@ -297,40 +296,37 @@ function (window) {
         Cell.prototype.draw = function( renderer ){
             var cell = this; // Définition d'une variable locale, qui sera valable pour le scope de tout les fonction internes ci-dessous.
             var path = cell.drawPath();
+            var context = {cell:cell, renderer:renderer}
             var cellRenderer = renderer.path(path)
                 .attr('fill', cell.color)
                 .attr('fill-opacity', '0.05')
                 .attr('stroke-width', '0.5')
-                .hover(
-                    function () {
-                        this.attr('fill-opacity', '0.8');
-                    },
-                    function () {
-                        this.attr('fill-opacity', '0.05')
-                    })
-                .click(select);
+                .hover(hoverInCell, hoverOutCell)
+                .click(clickCell)
+                .dblclick(dblClickCell);
+                
+            context.cellRenderer = cellRenderer;
+            
             /* Comportement de sélection de la cellule. */
-            function select() {
-                // Re-définition du nouveau comportement
-                cellRenderer.unclick(select);
-                cellRenderer.click(unselect);
-                
-                cellRenderer.attr('fill', 'green');
-                cell.selectCell(renderer);
+            function clickCell() {
+                cell.state.clickCell(context);
             }
-            /* Comportement lorsque l'on dé-sélectionne la cellule. */
-            function unselect() {
-                // Re-définition du nouveau comportement
-                cellRenderer.unclick(unselect);
-                cellRenderer.click(select);
-                
-                cellRenderer.attr('fill', cell.color)
-                cell.hideCell(renderer);
+            /* Comportement de sélection de la cellule. */
+            function dblClickCell() {
+                cell.state.dblClickCell(context);
             }
-
+            /* Comportement de sélection de la cellule. */
+            function hoverInCell() {
+                cell.state.hoverInCell(context);
+            }
+            /* Comportement de sélection de la cellule. */
+            function hoverOutCell() {
+                cell.state.hoverOutCell(context);
+            }     
+                       
         };
         
-        Cell.prototype.selectCell = function( renderer ){    
+        Cell.prototype.selectCell = function( renderer ){
             _CS.showCellAt(renderer, Point.U(this.origin));
             _CS.showCellAt(renderer, Point.V(this.origin));
             _CS.showCellAt(renderer, Point.W(this.origin));
@@ -348,9 +344,87 @@ function (window) {
             _CS.hideCellAt(renderer, Point.W(this.origin, -1));
         };
         
-        /**
+        /****************************************\
+         *
+         * CELL STATES
+         *
+        \****************************************/
+        function CellState( clickHandler, dblClickHandler, hoverInHandler, hoverOutHandler ) {
+            this.clickHandler = clickHandler;
+            this.dblClickHandler = dblClickHandler;
+            if(typeof hoverInHandler !== 'undefined'){
+                this.hoverInHandler = hoverInHandler;
+            } else {
+                this.hoverInHandler = CellState.defaults.hoverInHandler;
+            }
+            if(typeof hoverOutHandler !== 'undefined'){
+                this.hoverOutHandler = hoverOutHandler;
+            } else {
+                this.hoverOutHandler = CellState.defaults.hoverOutHandler;
+            }
+        }
+        
+        CellState.defaults = {};
+        CellState.defaults.clickHandler = function ( context ){
+            context.cellRenderer.attr('fill-opacity', '0.8');
+        };
+        CellState.defaults.dblClickHandler = function ( context ){
+            context.cellRenderer.attr('fill-opacity', '0.8');
+        };
+        CellState.defaults.hoverInHandler = function ( context ){
+            context.cellRenderer.attr('fill-opacity', '0.8');
+        };
+        CellState.defaults.hoverOutHandler = function ( context ){
+            context.cellRenderer.attr('fill-opacity', '0.05');
+        };
+        
+        CellState.prototype.clickCell = function( context ){
+            this.clickHandler.call(this, context);
+        };
+        
+        CellState.prototype.dblClickCell = function( context ){
+            this.dblClickHandler.call(this, context);
+        };
+        CellState.prototype.hoverInCell = function( context ){
+            this.hoverInHandler.call(this, context);
+        };
+        
+        CellState.prototype.hoverOutCell = function( context ){
+            this.hoverOutHandler.call(this, context);
+        };
+        
+        // INSTANCES DES ETATS
+        CellState.ACTIVE = new CellState(function( context ) {
+            alert('click active cell');
+        }, function( context ){
+            alert('dbl active cell');
+        } );    
+        
+        CellState.SELECTED = new CellState(function click( context ) {
+            var cellRenderer = context.cellRenderer;
+            cellRenderer.attr('fill', context.cell.color)
+        }, function dblclick( context ){
+            var cell = context.cell;
+            
+            // Unselect Cell
+            cell.state = CellState.UNSELECTED;
+            cell.hideCell(context.renderer);
+        } );    
+        
+        CellState.UNSELECTED = new CellState(function click( context ) {
+            var cellRenderer = context.cellRenderer;
+            cellRenderer.attr('fill', 'green');
+        }, function dblclick( context ){
+            var cell = context.cell;
+            
+            // Select cell
+            cell.state = CellState.SELECTED;
+            cell.selectCell(context.renderer);
+        } );
+        
+        /****************************************\
          * Cell Menu
-         **/ 
+        \****************************************/
         function CellMenu( ) {
         }
         
@@ -363,9 +437,11 @@ function (window) {
             this.cellController = new CellControler(cell);
         };
         
-        /**
+        /****************************************
+         *
          * CELL CONTROLLER
-         */
+         *
+         ****************************************/
         function CellControler( cell ){
             this.cell = cell;
             

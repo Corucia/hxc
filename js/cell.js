@@ -57,6 +57,10 @@ function (window) {
         Point.vectors.U= new Vector( 1.5, -1, 1, 0, 0 );
         Point.vectors.V= new Vector( 1.5, 1, 0, 1, 0 );
         Point.vectors.W= new Vector( 0, -2, 0, 0, 1 );
+        //    ___
+        //   /   \ V
+        //   \___/ U
+        //     W
 
         Point.X = function (point, n) {return Point.vectors.X.translate(point, n);};
         Point.Y = function (point, n) {return Point.vectors.Y.translate(point, n);};
@@ -71,6 +75,12 @@ function (window) {
             var _x = this.x * Point.browserX;
             var _y = this.y * Point.browserY;
             return {x:_x, y:_y};
+        }
+
+        Point.fromBrowserXY = function(x, y){
+            var _x = Math.floor( 2 * x / Point.browserX) / 2;
+            var _y = Math.floor( 2 * y / Point.browserY) / 2;
+            return new Point(_x, _y);
         }
         
         /**
@@ -100,11 +110,12 @@ function (window) {
          * HEXA CELL GRID
          *
         \****************************************/
-        function HxCellGrid( properties ) {
+        function HexaCellGrid( properties ) {
             this.properties =  new Properties(properties);
+            this.renderer = new HexaCellGridRenderer(this);
             this.cells =[];
         }
-        var _CS = new HxCellGrid(properties);
+        var HCG = new HexaCellGrid(properties);
         
         
         /**\
@@ -112,25 +123,31 @@ function (window) {
          **
          * Affiche le contenu de l'écran
         \**/
-        HxCellGrid.prototype.init = function() {
-            this.renderer = Raphael('content', $('#content').width(), $('#content').height());
+        HexaCellGrid.prototype.init = function() {
+            this.renderer.render();
+            
+            var grid = this;
+            this.renderer.ondblClick(new CellControler(function(evt, renderer){
+               grid.showCellAt( Point.fromBrowserXY( evt.clientX, evt.clientY ) );
+            }) );
+            this.showCellAt( 10, 12 );
         };
         
-        HxCellGrid.prototype.getProperty = function( propertyName ) {
+        HexaCellGrid.prototype.getProperty = function( propertyName ) {
             return this.properties.get(propertyName);
         };
         
         /**\
-         * Charge un fichier JSON permettant d'initialiser HxCellGrid.
+         * Charge un fichier JSON permettant d'initialiser HexaCellGrid.
         \**/
-        HxCellGrid.prototype.load = function (data) {
+        HexaCellGrid.prototype.load = function (data) {
             this.data = JSON.parse(data);
         };
 
         /**\
          * Sauvegarde des données, sous forme de JSON.
         \**/
-        HxCellGrid.prototype.save = function() {
+        HexaCellGrid.prototype.save = function() {
             alert('Data Saved!');
             var savedData = window.open();
             savedData.document.write(JSON.stringify(this.cells));
@@ -141,9 +158,8 @@ function (window) {
          **
          * Affiche le contenu de l'écran
         \**/
-        HxCellGrid.prototype.refresh = function() {
-            this.renderer.clear();
-            this.showCellAt(this.renderer, 10, 12);
+        HexaCellGrid.prototype.refresh = function() {
+            this.renderer.refresh();
         }
             
         // GESTION INTERNE DES CELLULES
@@ -151,7 +167,7 @@ function (window) {
         /**\
          * GetCell
         \**/
-        HxCellGrid.prototype.getCell = function( x, y ){
+        HexaCellGrid.prototype.getCell = function( x, y ){
             if(typeof y !== 'undefined'){
                 var cell_y = this.cells[x]
                 if(cell_y){
@@ -166,7 +182,7 @@ function (window) {
         /**\
          * AddCell
         \**/
-        HxCellGrid.prototype.addCell = function( cell ){
+        HexaCellGrid.prototype.addCell = function( cell ){
             var cell_y = this.cells[cell.origin.x];
             if(!cell_y){
                 cell_y = [];
@@ -178,24 +194,24 @@ function (window) {
         /**\
          * Show Cell
         \**/
-        HxCellGrid.prototype.showCellAt = function(renderer, x, y ){
+        HexaCellGrid.prototype.showCellAt = function( x, y ){
             if(typeof y !== 'undefined'){
                 var cell = this.getCell(x, y);
                 if(!cell){
-                    cell = new Cell(x, y);
+                    cell = new Cell(this, x, y);
                     this.addCell(cell);
                 } 
-                cell.show( renderer );
+                cell.show();
                 return;
             } 
             var point = x;
-            this.showCellAt(renderer, point.x, point.y);
+            this.showCellAt(point.x, point.y);
         };
 
         /**\
          * HideCell
         \**/
-        HxCellGrid.prototype.hideCellAt = function( renderer, x, y ){
+        HexaCellGrid.prototype.hideCellAt = function( renderer, x, y ){
             if(typeof y !== 'undefined'){
                 var cell = this.getCell( x, y );
                 if(cell){
@@ -210,7 +226,7 @@ function (window) {
         /**\
          * DropCell
         \**/
-        HxCellGrid.prototype.dropCellAt = function( renderer, x, y ){
+        HexaCellGrid.prototype.dropCellAt = function( renderer, x, y ){
             if(typeof y !== 'undefined'){
                 var cell = this.getCell( x, y );
                 if(cell){
@@ -222,16 +238,156 @@ function (window) {
             var point = x;
             this.dropCellAt(renderer, point.x, point.y);
         };
+        
+        /****************************************\
+         *
+         * HEXA CELL GRID CONTROLLER
+         * 
+        \****************************************/
+        function HexaCellGridController ( hxgrid ){
+            
+        }
+        
+        /****************************************\
+         *
+         * HEXA CELL GRID RENDERER
+         * 
+        \****************************************/
+        function HexaCellGridRenderer ( hexaGrid ){
+            this.hexaGrid = hexaGrid;
+            
+            this.observers = {};
+            this.observers.click = [];
+            this.observers.dblClick = [];
+            this.observers.hoverIn = [];
+            this.observers.hoverOut = [];
+        }
+        
+        /**
+         * Action "click" sur l'objet représentant la grille de cellules.
+         */
+        HexaCellGridRenderer.prototype.click = function( evt ){
+            var clickObservers = this.observers.click.slice();
+            for (var observerName in clickObservers) {
+                var observer = clickObservers[observerName];
+                observer.notify(evt, this);
+            }
+            this.refresh();
+        };    
+
+        HexaCellGridRenderer.prototype.onclick = function( observer ){
+            this.observers.click.push(observer);
+        };
+        
+        HexaCellGridRenderer.prototype.unclick = function( observer ){
+            this.observers.click = utils.removeFromArray ( this.observers.click , observer);
+        };
+        
+        /**
+         * Action "dblClick" sur l'objet représentant la grille de cellules.
+         */
+        HexaCellGridRenderer.prototype.dblClick = function( evt ){
+            var dblClickObservers = this.observers.dblClick.slice();
+            for (var observerName in dblClickObservers) {
+                var observer = dblClickObservers[observerName];
+                observer.notify(evt, this);
+            }
+            this.refresh();
+        };
+
+        HexaCellGridRenderer.prototype.ondblClick = function( observer ){
+            this.observers.dblClick.push(observer);
+        };
+        
+        HexaCellGridRenderer.prototype.undblClick = function( observer ){
+            this.observers.dblClick = utils.removeFromArray ( this.observers.dblClick , observer);
+        };        
+        
+        /**
+         * Action "hoverIn" sur l'objet représentant la grille de cellules.
+         */
+        HexaCellGridRenderer.prototype.hoverIn = function(evt){
+            var hoverInObservers = this.observers.hoverIn.slice();
+            for (var observerName in hoverInObservers) {
+                var observer = hoverInObservers[observerName];
+                observer.notify(evt, this);
+            }
+            this.refresh();
+        };
+        
+        HexaCellGridRenderer.prototype.onHoverIn = function( observer ){
+            this.observers.hoverIn.push(observer);
+        };
+        
+        HexaCellGridRenderer.prototype.unHoverIn = function( observer ){
+            this.observers.hoverIn = utils.removeFromArray( this.observers.hoverIn , observer);
+        };
+        
+        /**
+         * Action "hoverOut" sur l'objet représentant la grille de cellules.
+         */
+        HexaCellGridRenderer.prototype.hoverOut = function(evt){
+            var hoverOutObservers = this.observers.hoverOut.slice();
+            for (var observerName in hoverOutObservers) {
+                var observer = hoverOutObservers[observerName];
+                observer.notify(evt, this);
+            }
+            this.refresh();
+        };    
+        
+        HexaCellGridRenderer.prototype.onHoverOut = function( observer ){
+            this.observers.hoverOut.push(observer);
+        };
+        
+        HexaCellGridRenderer.prototype.unHoverOut = function( observer ){
+            this.observers.hoverOut = utils.removeFromArray ( this.observers.hoverOut , observer);
+        };
+        
+        HexaCellGridRenderer.prototype.render = function() {
+            if(typeof this.renderer !== 'undefined'){
+                return;
+            }
+            var hexaGridRenderer = this; // Définition d'une variable locale, qui sera valable pour le scope de toutes les fonction internes ci-dessous.
+            var hexaGrid = this.hexaGrid; // Définition d'une variable locale, qui sera valable pour le scope de toutes les fonction internes ci-dessous.
+            this.renderer = Raphael('content', $('#content').width(), $('#content').height());
+            this.renderer.raphael
+                .click(clickGrid)
+                .dblclick(dblClickGrid);
+                
+            /* Définition du "click" sur la grille d'hexagones cellule, en s'appuyant sur le CellRenderer. */
+            function clickGrid(evt) {
+                hexaGridRenderer.click(evt);
+            }
+            /* Définition du "double-click" sur une cellule, en s'appuyant sur le CellRenderer. */
+            function dblClickGrid(evt) {
+                hexaGridRenderer.dblClick(evt);
+            }
+        }
+        
+        /**\
+         * Refresh
+         **
+         * Affiche le contenu de l'écran
+        \**/
+        HexaCellGridRenderer.prototype.refresh = function() {
+            this.renderer.setSize( $('#content').width(), $('#content').height() );
+        }
             
         /****************************************\
          *
          * CELL
          * 
         \****************************************/
-        function Cell( x , y ) {            
+        function Cell( hexaGrid, x , y ) {
+            this.hexaGrid = hexaGrid;
+            this.data = {};
             this.origin = new Point(x, y);
-            this.color = _CS.getProperty('defaultColor');
-            this.state = CellState.UNSELECTED;
+            this.color = hexaGrid.getProperty('defaultColor');
+            this.state = {
+                color:hexaGrid.getProperty('defaultColor'),
+                opacity:0.1
+            }
+            this.renderer = new CellRenderer(this);
         }
 
         /**
@@ -243,37 +399,171 @@ function (window) {
             return cellRenderer;
         };    
         
-        /**
-         * TODO.
-         */
-        Cell.prototype.hide = function( renderer ){
-            var cellRenderer = this.findCellRenderer(renderer);
-            if(cellRenderer){
-                cellRenderer.hide();
+        // TODO
+        // TODO
+        // TODO
+        // TODO
+        Cell.prototype.show = function(){
+            this.renderer.render();
+        };
+        
+        /****************************************
+         *
+         * CELL CONTROLLER
+         * 
+         ****************************************/
+        function CellControler ( controller ){
+            this.controller = controller;
+        }
+        
+        CellControler.prototype.notify = function(evt, cellRenderer ){
+             return this.controller.call(this, evt, cellRenderer);
+        }
+        
+        CellControler.UNSELECT = new CellControler(function unselect( evt, cellRenderer ) {
+            if(CellControler.SELECT.selected !=null && CellControler.SELECT.selected == cellRenderer){
+                CellControler.SELECT.selected = null;
             }
+            cellRenderer.cell.state.opacity = 0.2;
+            
+            cellRenderer.onHoverIn(CellControler.HOVER_IN);
+            cellRenderer.onHoverOut(CellControler.HOVER_OUT);
+            
+            cellRenderer.unclick(CellControler.UNSELECT);
+            cellRenderer.onclick(CellControler.SELECT);
+        } );
+
+        CellControler.SELECT = new CellControler( function select( evt, cellRenderer ) {
+            if( this.selected != null ){
+                CellControler.UNSELECT.notify(this.selected);
+            }
+            this.selected = cellRenderer
+            
+            cellRenderer.cell.state.opacity = 1;
+            
+            cellRenderer.unHoverIn(CellControler.HOVER_IN);
+            cellRenderer.unHoverOut(CellControler.HOVER_OUT);
+            
+            cellRenderer.unclick(CellControler.SELECT);
+            cellRenderer.onclick(CellControler.UNSELECT);
+        } );
+
+        CellControler.HOVER_IN = new CellControler(function hoverin( evt, cellRenderer ) {
+            cellRenderer.cell.state.opacity = cellRenderer.cell.state.opacity * 2;
+        } );
+
+        CellControler.HOVER_OUT = new CellControler( function hoverout( evt, cellRenderer ) {
+            cellRenderer.cell.state.opacity = cellRenderer.cell.state.opacity / 2;
+        } );
+        
+        /****************************************
+         *
+         * CELL RENDERER
+         * TODO : Fucking Observable
+         ****************************************/
+        function CellRenderer( cell ){
+            this.cell = cell;
+            
+            this.observers = {};
+            this.observers.click = [];
+            this.observers.dblClick = [];
+            this.observers.hoverIn = [];
+            this.observers.hoverOut = [];
+            
+            this.render();
+            this.onclick(CellControler.SELECT);
+            this.onHoverIn(CellControler.HOVER_IN);
+            this.onHoverOut(CellControler.HOVER_OUT);
+            
+        }
+        
+        /**
+         * Action "click" sur l'objet représentant une cellule.
+         */
+        CellRenderer.prototype.click = function(evt){
+            var clickObservers = this.observers.click.slice();
+            for (var observerName in clickObservers) {
+                var observer = clickObservers[observerName];
+                observer.notify(evt, this);
+            }
+            this.refresh();
         };    
 
+        CellRenderer.prototype.onclick = function( observer ){
+            this.observers.click.push(observer);
+        };
+        
+        CellRenderer.prototype.unclick = function( observer ){
+            this.observers.click = utils.removeFromArray ( this.observers.click , observer);
+        };
+        
         /**
-         * TODO
+         * Action "dblClick" sur l'objet représentant une cellule.
          */
-        Cell.prototype.drop = function( renderer ){    
-            var cellRenderer = this.findCellRenderer(renderer);
-            if(cellRenderer){
-                cellRenderer.remove();
+        CellRenderer.prototype.dblClick = function(evt){
+            var dblClickObservers = this.observers.dblClick.slice();
+            for (var observerName in dblClickObservers) {
+                var observer = dblClickObservers[observerName];
+                observer.notify(evt, this);
             }
+            this.refresh();
+        };
+
+        CellRenderer.prototype.ondblClick = function( observer ){
+            this.observers.dblClick.push(observer);
+        };
+        
+        CellRenderer.prototype.undblClick = function( observer ){
+            this.observers.dblClick = utils.removeFromArray ( this.observers.dblClick , observer);
         };        
         
         /**
-         * TODO
+         * Action "hoverIn" sur l'objet représentant une cellule.
          */
-        Cell.prototype.show = function( renderer ){
-            var cellRenderer = this.findCellRenderer(renderer);
-            if(cellRenderer) {
-                cellRenderer.show();
-            } else {
-                this.draw(renderer);
+        CellRenderer.prototype.hoverIn = function(evt){
+            var hoverInObservers = this.observers.hoverIn.slice();
+            for (var observerName in hoverInObservers) {
+                var observer = hoverInObservers[observerName];
+                observer.notify(evt, this);
             }
-        };        
+            this.refresh();
+        };
+        
+        CellRenderer.prototype.onHoverIn = function( observer ){
+            this.observers.hoverIn.push(observer);
+        };
+        
+        CellRenderer.prototype.unHoverIn = function( observer ){
+            this.observers.hoverIn = utils.removeFromArray( this.observers.hoverIn , observer);
+        };
+        
+        /**
+         * Action "hoverOut" sur l'objet représentant une cellule.
+         */
+        CellRenderer.prototype.hoverOut = function(evt){
+            var hoverOutObservers = this.observers.hoverOut.slice();
+            for (var observerName in hoverOutObservers) {
+                var observer = hoverOutObservers[observerName];
+                observer.notify(evt, this);
+            }
+            this.refresh();
+        };    
+        
+        CellRenderer.prototype.onHoverOut = function( observer ){
+            this.observers.hoverOut.push(observer);
+        };
+        
+        CellRenderer.prototype.unHoverOut = function( observer ){
+            this.observers.hoverOut = utils.removeFromArray ( this.observers.hoverOut , observer);
+        };
+        
+        CellRenderer.prototype.globalGrid = function(){
+            return this.cell.hexaGrid
+        }
+        CellRenderer.prototype.globalRenderer = function(){
+            return this.globalGrid().renderer.renderer;
+        };
+        
         
         /**
          * Effectue le tracé de la cellule.
@@ -284,147 +574,49 @@ function (window) {
          * L'objet "renderer" que l'on crée ici, est un objet Element de Raphael.JS ; il porte la
          * structure du comportement graphique de la cellule.
          */
-        Cell.prototype.draw = function( renderer ){
-            var cell = this; // Définition d'une variable locale, qui sera valable pour le scope de toutes les fonction internes ci-dessous.
+        CellRenderer.prototype.render = function(){
+            if(typeof this.renderer !== 'undefined'){
+                return;
+            }
+            var cellRenderer = this; // Définition d'une variable locale, qui sera valable pour le scope de toutes les fonction internes ci-dessous.
+            var cell = this.cell; // Définition d'une variable locale, qui sera valable pour le scope de toutes les fonction internes ci-dessous.
+            
             var path = utils.drawHexagon(cell.origin);
-            var context = {cell:cell, renderer:renderer}
-            var cellRenderer = renderer.path(path)
+            this.renderer = this.globalRenderer().path(path)
                 .attr('fill', cell.color)
-                .attr('fill-opacity', '0.05')
+                .attr('fill-opacity', cell.state.opacity / 2 )
                 .attr('stroke-width', '0.5')
                 .hover(hoverInCell, hoverOutCell)
                 .click(clickCell)
                 .dblclick(dblClickCell);
                 
-            context.cellRenderer = cellRenderer;
-            
-            /* Définition du "click" sur une cellule, en s'appuyant sur son "state". */
-            function clickCell() {
-                cell.state.clickCell(context);
+            /* Définition du "click" sur une cellule, en s'appuyant sur le CellRenderer. */
+            function clickCell(evt) {
+                cellRenderer.click(evt);
             }
-            /* Définition du "double-click" sur une cellule, en s'appuyant sur son "state". */
-            function dblClickCell() {
-                cell.state.dblClickCell(context);
+            /* Définition du "double-click" sur une cellule, en s'appuyant sur le CellRenderer. */
+            function dblClickCell(evt) {
+                cellRenderer.dblClick(evt);
             }
-            /* Définition du "hover-in" sur une cellule, en s'appuyant sur son "state". */
-            function hoverInCell() {
-                cell.state.hoverInCell(context);
+            /* Définition du "hover-in" sur une cellule, en s'appuyant sur le CellRenderer. */
+            function hoverInCell(evt) {
+                cellRenderer.hoverIn(evt);
             }
-            /* Définition du "hover-out" sur une cellule, en s'appuyant sur son "state". */
-            function hoverOutCell() {
-                cell.state.hoverOutCell(context);
+            /* Définition du "hover-out" sur une cellule, en s'appuyant sur le CellRenderer. */
+            function hoverOutCell(evt) {
+                cellRenderer.hoverOut(evt);
             }     
-                       
         };
         
-        Cell.prototype.selectCell = function( renderer ){
-            _CS.showCellAt(renderer, Point.U(this.origin));
-            _CS.showCellAt(renderer, Point.V(this.origin));
-            _CS.showCellAt(renderer, Point.W(this.origin));
-            _CS.showCellAt(renderer, Point.U(this.origin, -1));
-            _CS.showCellAt(renderer, Point.V(this.origin, -1));
-            _CS.showCellAt(renderer, Point.W(this.origin, -1));
-        };
-        
-        Cell.prototype.hideCell = function( renderer ){
-            _CS.hideCellAt(renderer, Point.U(this.origin));
-            _CS.hideCellAt(renderer, Point.V(this.origin));
-            _CS.hideCellAt(renderer, Point.W(this.origin));
-            _CS.hideCellAt(renderer, Point.U(this.origin, -1));
-            _CS.hideCellAt(renderer, Point.V(this.origin, -1));
-            _CS.hideCellAt(renderer, Point.W(this.origin, -1));
-        };
-        
-        /****************************************\
-         *
-         * CELL STATES
-         *
-        \****************************************/
-        /**
-         * Les Etats d'une cellule décrivent ses comportements dans les différents cas prévus.
-         *
-         ** [class]
-         *
-         * Les comportements prévus sont : "click", "double-click", "hover-in" et "hover-out"
-         * Par convention :
-         * > Click : déclenche un événement "state-less" ; qui ne changera pas l'état de la cellule
-         * > Double-Click : déclenche un événement "state-ful" ; qui changera  'état de la cellule
-         * > Hover-in et Hover-out : déclenchent des événements "state-less".
-        \**/
-        function CellState( clickHandler, dblClickHandler, hoverInHandler, hoverOutHandler ) {
-            this.clickHandler = clickHandler;
-            this.dblClickHandler = dblClickHandler;
-            if(typeof hoverInHandler !== 'undefined'){
-                this.hoverInHandler = hoverInHandler;
-            } else {
-                this.hoverInHandler = CellState.defaults.hoverInHandler;
-            }
-            if(typeof hoverOutHandler !== 'undefined'){
-                this.hoverOutHandler = hoverOutHandler;
-            } else {
-                this.hoverOutHandler = CellState.defaults.hoverOutHandler;
-            }
+        CellRenderer.prototype.refresh = function(){
+             var cell = this.cell;
+             this.renderer
+                .attr('fill', cell.color)
+                .attr('fill-opacity', cell.state.opacity )
+                .attr('stroke-width', '0.5');
+            this.globalGrid().refresh();
         }
                 
-        CellState.prototype.clickCell = function( context ){
-            this.clickHandler.call(this, context);
-        };
-        CellState.prototype.dblClickCell = function( context ){
-            this.dblClickHandler.call(this, context);
-        };
-        CellState.prototype.hoverInCell = function( context ){
-            this.hoverInHandler.call(this, context);
-        };
-        CellState.prototype.hoverOutCell = function( context ){
-            this.hoverOutHandler.call(this, context);
-        };
-        
-        // DEFAULTS
-        
-        CellState.defaults = {};
-        CellState.defaults.clickHandler = function ( context ){
-            context.cellRenderer.attr('fill-opacity', '0.8');
-        };
-        CellState.defaults.dblClickHandler = function ( context ){
-            context.cellRenderer.attr('fill-opacity', '0.8');
-        };
-        CellState.defaults.hoverInHandler = function ( context ){
-            context.cellRenderer.attr('fill-opacity', '0.8');
-            // TODO : mettre en place un listener (menu ?) affichant la dernière cellule survolée
-        };
-        CellState.defaults.hoverOutHandler = function ( context ){
-            context.cellRenderer.attr('fill-opacity', '0.05');
-        };
-        
-        // INSTANCES DES ETATS
-        CellState.ACTIVE = new CellState(function( context ) {
-            alert('click active cell');
-        }, function( context ){
-            alert('dbl active cell');
-        } );    
-        
-        CellState.SELECTED = new CellState(function click( context ) {
-            var cellRenderer = context.cellRenderer;
-            cellRenderer.attr('fill', context.cell.color)
-        }, function dblclick( context ){
-            var cell = context.cell;
-            
-            // Unselect Cell
-            cell.state = CellState.UNSELECTED;
-            cell.hideCell(context.renderer);
-        } );    
-        
-        CellState.UNSELECTED = new CellState(function click( context ) {
-            var cellRenderer = context.cellRenderer;
-            cellRenderer.attr('fill', 'green');
-        }, function dblclick( context ){
-            var cell = context.cell;
-            
-            // Select cell
-            cell.state = CellState.SELECTED;
-            cell.selectCell(context.renderer);
-        } );
-        
         /****************************************\
          * Cell Menu
         \****************************************/
@@ -439,30 +631,6 @@ function (window) {
             var cellmenu = this; // Définition d'une variable locale, qui sera valable pour le scope de tout les fonction internes ci-dessous.
             this.cellController = new CellControler(cell);
         };
-        
-        /****************************************
-         *
-         * CELL CONTROLLER
-         *
-         ****************************************/
-        function CellControler( cell ){
-            this.cell = cell;
-            
-            // copy cellData
-            for(var cellProperty in cell){
-                this[cellProperty] = cell[cellProperty];
-            }
-        }
-        
-        CellControler.prototype.save = function (){
-            for(var property in this){
-                cell[cellProperty] = this[cellProperty];
-            }
-        }
-        
-        
-        CellControler.prototype.discard = function (){
-        }
         
         /* ******************************
          * Utilitaires
@@ -486,6 +654,16 @@ function (window) {
                 }
                 return null;
             },
+            
+            removeFromArray: function ( _array, item ){
+                var index = _array.indexOf(item) ;
+                if (index > -1) {
+                    var result = _array.splice(index, 1);
+                    // alert("_array : " + _array.length);
+                    return _array;
+                }
+                return _array;
+            },            
             
             /**
              * Renvoie le tracé d'un hexagone, à partir de son centre, de la dimension de son côté, 
@@ -516,21 +694,5 @@ function (window) {
          * EXPOSE Cells
         \*/
         
-        window.HxCellGrid = _CS;
+        window.HexaCellGrid = HCG;
 }));
-
-/**
- * Bootstrap
- */
-$(document).ready(function () {
-    $('#content').append('<div id="devtools"></div>').css('position', 'absolute');
-    $('#devtools')
-        .append('<button type="button" id="refresh">Refresh</button>')
-        .append('<button type="button" id="save">Sauver</button>');
-    HxCellGrid.init();
-    HxCellGrid.refresh();
-    $('#refresh').click(function() {HxCellGrid.refresh()});
-    $('#refresh').click(function() {alert(HxCellGrid.properties.get('apothem'))});
-    $('#save').click(function() {HxCellGrid.save()});
-    // $('#refresh').click(HxCellGrid.reset);
-}, false);

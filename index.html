@@ -43,6 +43,24 @@
 	</head>
 	<body>
 		<div id="content">
-		</div>
+        <div style="border:2px groove; width:500px; height:500px margin-inline-end: 2px;margin-inline-start: 2px;padding-block-end: 0.75em;padding-block-start: 0.35em;padding-inline-end: 0.625em;padding-inline-start: 0.625em;">
+            <div style="inline-size: -moz-fit-content;padding-inline-end: 2px;padding-inline-start: 2px;">Foo</div>
+        </div>
+    <script type="">
+        /**
+         * Bootstrap
+         */
+        $(document).ready(function () {
+            $('#content').append('<div id="devtools"></div>').css('position', 'relative');
+            $('#devtools')
+                .append('<button type="button" id="refresh">Refresh</button>')
+                .append('<button type="button" id="save">Sauver</button>');
+            HexaCellGrid.init();
+            $('#refresh').click(function() {HexaCellGrid.refresh()});
+            $('#refresh').click(function() {alert(HexaCellGrid.properties.get('apothem'))});
+            $('#save').click(function() {HexaCellGrid.save()});
+            // $('#refresh').click(HxCellGrid.reset);
+        }, false);
+    </script>
 	</body>
 </html>
